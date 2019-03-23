@@ -1,10 +1,9 @@
+import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 import os
-from numba import jit
 
 
-# TODO: Переделать для быстрой загрузки
 def save_target_graph(sess, folder=None, target_name=None):
     train_vars = tf.trainable_variables(target_name)
 
@@ -15,6 +14,7 @@ def save_target_graph(sess, folder=None, target_name=None):
         name = var.name
         arr = var.eval(sess)
         np.save(folder + '/' + name.replace('/', '_').rpartition(':')[0], arr)
+
 
 def restore_target_graph(sess, folder=None, target_name=None):
     train_vars = tf.trainable_variables(target_name)
@@ -169,7 +169,6 @@ def normalization(_set):
 
 
 def animate(data_gen, labels, prices, frames=None):
-    import matplotlib.pyplot as plt
     from matplotlib.animation import FuncAnimation
 
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -219,7 +218,7 @@ def moving_average(a, n=3):
 
 def numpy_ewma(data, window):
 
-    alpha = 2 /(window + 1.0)
+    alpha = 2 / (window + 1.0)
     alpha_rev = 1-alpha
     n = data.shape[0]
 
@@ -266,12 +265,12 @@ class SampleGen:
 
         try:
             labels = self.labels[indexes]
-        except TypeError as e:
+        except TypeErro:
             labels = None
 
         try:
             classes = self.classes[indexes]
-        except TypeError as e:
+        except TypeError:
             classes = None
 
         return samples, labels, classes
@@ -282,7 +281,7 @@ class SampleGen:
                 return self.indexes[self.counter][0]
             else:
                 return None
-        except IndexError as e:
+        except IndexError:
             return None
 
     def get_indexes(self):

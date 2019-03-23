@@ -54,34 +54,29 @@ if __name__ == '__main__':
     BATCH_TRAIN = True
     learning_rate = 0.0005
 
+    # Инициализируем среду
+    env = gym.make('CartPole-v0')
+    # env = gym.make('LunarLanderContinuous-v2')
+    # env = gym.make('LunarLander-v2')
+    # env = gym.make('Pendulum-v0')
+    env.seed(0)
+
     # Создаем скелет модели
-    model = Agent(4, cliprange=0.1, max_grad_norm=0.5, stochastic=True)
+    model = Agent(env, cliprange=0.1, max_grad_norm=0.5, stochastic=True)
 
     keep_prob = 1.0
-    gamma, lam = 0.99, 0.98
+    gamma, lam = 0.98, 0.98
     batch_size = 64
 
-    actions = np.zeros((MAX_DURATION, 2), dtype=np.int8)
-    values = np.zeros((MAX_DURATION, 2), dtype=np.float32)
-    neglogps = np.zeros((MAX_DURATION, 2), dtype=np.float32)
-
-    real_actions = np.zeros_like(actions[:, 0], dtype=np.int8)
-    real_values = np.zeros_like(values[:, 0], dtype=np.float32)
-    real_neglogps = np.zeros_like(neglogps[:, 0], dtype=np.float32)
-    rewards = np.zeros_like(actions[:, 0], dtype=np.float32)
+    # Create some arrays to store episodes information
+    states = np.zeros((MAX_DURATION, env.observation_space.shape[0]), dtype=np.float32)
+    actions = np.zeros(MAX_DURATION, dtype=np.float32)
+    values = np.zeros(MAX_DURATION, dtype=np.float32)
+    neglogps = np.zeros(MAX_DURATION, dtype=np.float32)
+    rewards = np.zeros(MAX_DURATION, dtype=np.float32)
     values_next = np.zeros(MAX_DURATION, dtype=np.float32)
 
     def main():
-        env = gym.make('CartPole-v0')
-        # env = gym.make('LunarLanderContinuous-v2')
-        # env = gym.make('Pendulum-v0')
-        print(env.action_space)
-        print(env.action_space)
-        input(env.observation_space)
-        env.seed(0)
-        states = np.zeros((MAX_DURATION, env.observation_space.shape[0]), dtype=np.float32)
-
-        model = Agent(4, cliprange=0.1, max_grad_norm=0.5, stochastic=True)
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
 
@@ -91,10 +86,11 @@ if __name__ == '__main__':
                 for j in count():
                     # env.render()
 
-                    real_actions[j], real_values[j], real_neglogps[j] = model.evaluate_model(sess, obs.reshape(1, -1), 1.0)
-
                     states[j] = obs
-                    next_obs, rewards[j], done, info = env.step(real_actions[j])
+                    actions[j], values[j], neglogps[j] = model.evaluate_model(sess,
+                                                                              obs.reshape(1, -1),
+                                                                              keep_prob=1.0)
+                    next_obs, rewards[j], done, info = env.step(int(actions[j]))
 
                     if done:
                         obs = env.reset()
@@ -112,19 +108,19 @@ if __name__ == '__main__':
                     success_num = 0
 
                 end = j + 1
-                values_next[:end - 1] = real_values[1:end]
+                values_next[:end - 1] = values[1:end]
                 values_next[end - 1] = 0
 
                 # Выбираем способ оценки
                 gaes = True
                 if gaes:
-                    gaes = get_gaes(rewards[:end], real_values[:end], values_next[:end],
+                    gaes = get_gaes(rewards[:end], values[:end], values_next[:end],
                                     gamma=gamma, lam=lam)
 
                     # Нормализуем оценночные значения
                     gaes = (gaes - gaes.mean()) / (gaes.std() + 1e-8)
 
-                    q_values = gaes + real_values[:end]
+                    q_values = gaes + values[:end]
 
                 else:
                     q_values = get_q_values(rewards[:end], gamma=gamma)
@@ -132,7 +128,7 @@ if __name__ == '__main__':
                     # Нормализуем оценночные значения
                     q_values = (q_values - q_values.mean()) / (q_values.std() + 1e-8)
 
-                    gaes = q_values - real_values[:end]
+                    gaes = q_values - values[:end]
 
                 # Переназначаем параметры нового агента старому
                 model.synchronize_policies(sess)
@@ -143,9 +139,9 @@ if __name__ == '__main__':
                         args = np.random.randint(0, len(states[:end]), batch_size)
                         loss, _ = model.train_agent(sess,
                                                     states[args],
-                                                    real_actions[args],
-                                                    real_values[args],
-                                                    real_neglogps[args],
+                                                    actions[args],
+                                                    values[args],
+                                                    neglogps[args],
                                                     gaes[args],
                                                     q_values[args],
                                                     learning_rate,
@@ -153,9 +149,9 @@ if __name__ == '__main__':
                 else:
                     loss, _ = model.train_agent(sess,
                                                 states[:end],
-                                                real_actions[:end],
-                                                real_values[:end],
-                                                real_neglogps[:end],
+                                                actions[:end],
+                                                values[:end],
+                                                neglogps[:end],
                                                 gaes,
                                                 q_values,
                                                 learning_rate,

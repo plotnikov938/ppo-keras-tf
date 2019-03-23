@@ -1,20 +1,78 @@
 import tensorflow as tf
+import tensorflow_probability as tfp
 import numpy as np
 from layers import fc_layer
 from common import save_target_graph, restore_target_graph
+import gym
 
-# TODO: Добавить поддержку непрерывного пространства действий
+
+class Categorical_v0:
+    def __init__(self, logits):
+        self.logits = logits
+
+    def sample(self):
+        u = tf.random_uniform(tf.shape(self.logits))
+
+        return tf.argmax(self.logits - tf.log(-tf.log(u)), axis=-1)
+
+    def entropy(self):
+        a0 = self.logits - tf.reduce_max(self.logits, axis=-1, keepdims=True)
+        ea0 = tf.exp(a0)
+        z0 = tf.reduce_sum(ea0, axis=-1, keepdims=True)
+        p0 = ea0 / z0
+
+        return tf.reduce_sum(p0 * (tf.log(z0) - a0), axis=-1)
+
+    def neglogp(self, x):
+        if x.dtype not in (tf.uint8, tf.int32, tf.int64):
+            print('Casting dtype of x')
+            x = tf.cast(x, tf.int32)
+
+        return tf.nn.softmax_cross_entropy_with_logits_v2(
+            logits=self.logits,
+            labels=tf.one_hot(x, self.logits.shape[-1]))
+
+
+class CategoricalNew:
+    def __init__(self, logits):
+        self.logits = logits
+        self.probs = tf.nn.softmax(logits)
+
+    def sample(self):
+        action = tf.random.categorical(tf.log(self.probs), num_samples=1)
+        return tf.reshape(action, shape=[-1])
+
+    @staticmethod
+    def cross_entropy(p, q):
+        return -tf.reduce_sum(p * tf.log(q + 1e-10), axis=1)
+
+    def neglogp(self, x):
+        if x.dtype not in (tf.uint8, tf.int32, tf.int64):
+            print('Casting dtype of x to tf.int32')
+            x = tf.cast(x, tf.int32)
+
+        return self.cross_entropy(tf.one_hot(x, self.logits.shape[-1]), self.probs)
+
+    def entropy(self):
+        return self.cross_entropy(self.probs, self.probs)
 
 
 class Agent:
-    def __init__(self, shape, cliprange=0.1, max_grad_norm=None, stochastic=False):
-        # Сбрасываем граф
+    def __init__(self, env, cliprange=0.1, max_grad_norm=None, stochastic=False):
+        # Environment parameters
+        self.act_space = env.action_space
+        try:
+            self.act_shape = env.action_space.shape[0]
+        except IndexError:
+            self.act_shape = env.action_space.n
+        self.obs_shape = env.observation_space.shape[0]
+
+        # Reset the graph
         tf.reset_default_graph()
 
-        # Инициализация
-        self.states = tf.placeholder(tf.float32, shape=[None, shape], name='states')
-
-        self.actions_old = tf.placeholder(tf.int32, shape=[None], name='actions')
+        # Init
+        self.states = tf.placeholder(tf.float32, shape=[None, self.obs_shape], name='states')
+        self.actions_old = tf.placeholder(tf.float32, shape=[None], name='actions')
         self.rewards = tf.placeholder(tf.float32, shape=[None], name='rewards')
         self.gaes = tf.placeholder(tf.float32, shape=[None], name='advantage')
         self.values_old = tf.placeholder(tf.float32, shape=[None], name='values_old')
@@ -25,7 +83,7 @@ class Agent:
         self.keep_prob = tf.Variable(1.0, dtype=tf.float32)
         self.learning_rate = tf.placeholder(tf.float32, shape=[], name='learning_rate')
 
-        """Построение модели"""
+        """Build the model"""
         # Agent for acting
         with tf.variable_scope('old_agent') as scope:
             self.actions_distrs, self.actor_logits = self.actor(self.states, keep_prob=self.keep_prob)
@@ -38,16 +96,12 @@ class Agent:
             self.values_new, self.critic_feature_new = self.critic(self.states)
             policy_vars_new = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope.name)
 
-        if stochastic:
-            action = tf.multinomial(tf.log(self.actions_distrs), num_samples=1)
-            self.actions = tf.reshape(action, shape=[-1])
-        else:
-            self.actions = tf.argmax(self.actions_distrs, axis=1)
+        self.actions = self.actions_distrs.sample()
+        self.neglogp = self.actions_distrs.neglogp(self.actions)
 
-        self.neglogp = -tf.log(tf.reduce_sum(self.actions_distrs * tf.one_hot(self.actions, 2), axis=1) + 1e-8)
         self.synchronize_op = [old_p.assign(p) for old_p, p in zip(policy_vars_old, policy_vars_new)]
 
-        """Функции потерь"""
+        """Losses"""
         with tf.variable_scope('critic_loss'):
             self.values_cliped = self.values_old + \
                                  tf.clip_by_value(self.values_new - self.values_old, -cliprange, cliprange)
@@ -57,35 +111,25 @@ class Agent:
             self.critic_loss = 0.5*tf.reduce_mean(tf.maximum(critic_loss, critic_loss_clipped))
 
         with tf.variable_scope('actor_loss'):
-            # neglogp = tf.nn.softmax_cross_entropy_with_logits_v2(logits=self.actor_logits_new,
-            #                                                      labels=tf.one_hot(self.actions_old, 2))
+            neglogps_new = self.actions_distrs_new.neglogp(self.actions_old)
 
-            neglogps = -tf.log(tf.reduce_sum(self.actions_distrs_new * tf.one_hot(self.actions_old, 2), axis=1) + 1e-8)
-
-            # TODO: Допилить до ума
-            self.action_space = True
-            if self.action_space:
-                ratio = tf.exp(self.neglogps_old - neglogps)
-            else:
-                # TODO: Проверить
-                ratio = self.actions_distrs_new.prob(self.actions_old) / self.actions_distrs.prob(self.actions_old)
+            ratio = tf.exp(self.neglogps_old - neglogps_new)
 
             actor_loss = self.gaes * ratio
             actor_loss_clipped = self.gaes * tf.clip_by_value(ratio, 1.0 - self.cliprange, 1.0 + self.cliprange)
             self.actor_loss = -tf.reduce_mean(tf.minimum(actor_loss, actor_loss_clipped))
 
         with tf.variable_scope('entropy_loss'):
-            entropy = -tf.reduce_sum(self.actions_distrs *
-                                     tf.log(tf.clip_by_value(self.actions_distrs, 1e-10, 1.0) + 1e-8), axis=1)
+            entropy = self.actions_distrs_new.entropy()
             self.entropy_loss = tf.reduce_mean(entropy, axis=0)
 
         with tf.variable_scope('total_loss'):
-            self.loss = self.critic_loss + self.actor_loss - 0.01*self.entropy_loss
+            self.loss = self.critic_loss + self.actor_loss - 0.001*self.entropy_loss
 
-        # Определяем тренировочные переменные
+        # Define all trainable variables
         self.train_vars = policy_vars_new
 
-        # Выбираем оптимизатор
+        # Choose the optimizer
         # self.train_op = tf.train.AdamOptimizer(self.learning_rate).minimize(loss=self.loss, var_list=self.train_vars)
 
         # Calculate the gradients
@@ -99,7 +143,7 @@ class Agent:
         # Backpropagation
         self.train_op = trainer.apply_gradients(grads)
 
-        # Определяем дополнительные фичи
+        # Define additional features
         pass
 
         # Merge all the summaries and write them out to selected folder
@@ -137,19 +181,8 @@ class Agent:
         else:
             action = tf.argmax(self.actions_distrs, axis=1)
 
-    # def get_action_v2(self, sess, samples, keep_prob, stochastic=True):
-    #     if stochastic:
-    #         action = tf.multinomial(tf.log(self.actions_probs), num_samples=1)
-    #         action = tf.reshape(self.action, shape=[-1])
-    #     else:
-    #         action = tf.argmax(self.actions_probs, axis=1)
-    #         # self.action = tf.reshape(tf.round(self.actions_probability), shape=[-1])
-    #
-    #     return sess.run(action, feed_dict={self.states: samples, self.keep_prob: keep_prob})
-
     def evaluate_model(self, sess, samples, keep_prob):
         return sess.run([self.actions, self.values, self.neglogp], feed_dict={self.states: samples, self.keep_prob: keep_prob})
-
 
     def synchronize_policies(self, sess):
         sess.run(self.synchronize_op)
@@ -164,7 +197,7 @@ class Agent:
                                                                self.learning_rate: learning_rate,
                                                                self.keep_prob: keep_prob})
 
-    def actor(self, states, action_border=None, name='actor', keep_prob=0.5, reuse=False, trainable=True):
+    def actor(self, states, name='actor', keep_prob=0.5, reuse=False, trainable=True):
         dc = None
         act = 'silu'
 
@@ -175,34 +208,33 @@ class Agent:
             out = fc_layer(out, 20, keep_prob, dc=None, name="layer_2", act=act, trainable=trainable)
 
             # TODO: Доделать
-            if action_border:
-                mu = 2 * tf.contrib.layers.fully_connected(inputs=dl1, num_outputs=self.num_action,
+            if isinstance(self.act_space, gym.spaces.Discrete):
+                logits = fc_layer(out, self.act_shape, keep_prob, dc=None, name="layer_logits", act='none',
+                                  trainable=trainable)
+
+                actions_probability = CategoricalNew(logits)
+
+            else:
+                mu = logits = 2 * tf.contrib.layers.fully_connected(inputs=out, num_outputs=self.act_shape,
                                                            activation_fn=tf.nn.tanh,
                                                            trainable=trainable,
                                                            scope='mu')
-                fc_layer(out, 2, keep_prob, dc=None, name="mu", act='tanh',
-                         trainable=trainable)
-                sigma = tf.contrib.layers.fully_connected(inputs=dl1, num_outputs=self.num_action,
+
+                # fc_layer(out, self.act_shape, keep_prob, dc=None, name="mu", act='tanh',
+                #          trainable=trainable)
+
+                sigma = tf.contrib.layers.fully_connected(inputs=out, num_outputs=self.act_shape,
                                                           activation_fn=tf.nn.softplus,
                                                           trainable=trainable,
                                                           scope='sigma')
-                norm_dist = tf.contrib.distributions.Normal(loc=mu, scale=sigma)
-                fc_layer(out, 2, keep_prob, dc=None, name="sigma", act='none',
-                         trainable=trainable)
-
-                param = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope)
+                actions_probability = tfp.distributions.Normal(loc=mu, scale=sigma)
+                # fc_layer(out, self.act_shape, keep_prob, dc=None, name="sigma", act='none',
+                #          trainable=trainable)
 
                 # self.sample_op = \
                 # tf.clip_by_value(tf.squeeze(pi.sample(1), axis=0), self.action_bound[0], self.action_bound[1])[0]
 
-            else:
-
-                logits = fc_layer(out, 2, keep_prob, dc=None, name="layer_logits", act='none',
-                                  trainable=trainable)
-
-                actions_probability = tf.nn.softmax(logits)
-
-        return actions_probability, logits
+            return actions_probability, logits
 
     def critic(self, states, name='critic', keep_prob=0.5, reuse=False, trainable=True):
         dc = None
