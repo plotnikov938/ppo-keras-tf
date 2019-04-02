@@ -1,11 +1,14 @@
+import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
-import tensorflow as tf
+
 import gym
+
 from itertools import count
+from collections import deque
 
 from ppo import Agent
-
+from networks import actor, critic
 
 def get_one_hot(a, classes):
     shape = a.shape[0]
@@ -44,6 +47,31 @@ def get_gaes(rewards, values, values_next, gamma, lam):
 
 
 if __name__ == '__main__':
+    # import argparse
+    #
+    # parser = argparse.ArgumentParser()
+    # parser.add_argument('--env', type=str, default='HalfCheetah-v2')
+    # parser.add_argument('--hid', type=int, default=64)
+    # parser.add_argument('--l', type=int, default=2)
+    # parser.add_argument('--gamma', type=float, default=0.99)
+    # parser.add_argument('--seed', '-s', type=int, default=0)
+    # parser.add_argument('--cpu', type=int, default=4)
+    # parser.add_argument('--steps', type=int, default=4000)
+    # parser.add_argument('--epochs', type=int, default=50)
+    # parser.add_argument('--exp_name', type=str, default='ppo')
+    # args = parser.parse_args()
+    #
+    # mpi_fork(args.cpu)  # run parallel code with mpi
+    #
+    # from spinup.utils.run_utils import setup_logger_kwargs
+    #
+    # logger_kwargs = setup_logger_kwargs(args.exp_name, args.seed)
+    #
+    # ppo(lambda: gym.make(args.env), actor_critic=core.mlp_actor_critic,
+    #     ac_kwargs=dict(hidden_sizes=[args.hid] * args.l), gamma=args.gamma,
+    #     seed=args.seed, steps_per_epoch=args.steps, epochs=args.epochs,
+    #     logger_kwargs=logger_kwargs)
+
     MAX_DURATION = 2000  # 22320
     TRAIN_EPISODES = 20000
     TRAIN_EPOCHS = 4
@@ -52,64 +80,78 @@ if __name__ == '__main__':
     FEE = 0.001
     START_POS = 0
     BATCH_TRAIN = True
-    learning_rate = 0.0005
+    learning_rate = 0.0001
 
     # Инициализируем среду
     env = gym.make('CartPole-v0')
     # env = gym.make('LunarLanderContinuous-v2')
     # env = gym.make('LunarLander-v2')
-    # env = gym.make('Pendulum-v0')
+    env = gym.make('Pendulum-v0')
+    # env = gym.make('FrozenLake-v0')
     env.seed(0)
 
-    # Создаем скелет модели
-    model = Agent(env, cliprange=0.1, max_grad_norm=0.5, stochastic=True)
+    # Create the model
+    model = Agent(env, actor_net=actor, critic_net=critic,
+                  cliprange=0.2, max_grad_norm=0.5, stochastic=True)
 
     keep_prob = 1.0
-    gamma, lam = 0.98, 0.98
+    gamma, lam = 0.999, 0.998
     batch_size = 64
 
-    # Create some arrays to store episodes information
-    states = np.zeros((MAX_DURATION, env.observation_space.shape[0]), dtype=np.float32)
-    actions = np.zeros(MAX_DURATION, dtype=np.float32)
-    values = np.zeros(MAX_DURATION, dtype=np.float32)
-    neglogps = np.zeros(MAX_DURATION, dtype=np.float32)
-    rewards = np.zeros(MAX_DURATION, dtype=np.float32)
-    values_next = np.zeros(MAX_DURATION, dtype=np.float32)
+    mov_av = deque(maxlen=100)
 
     def main():
+        # Create some arrays to store episodes information
+        states = np.zeros((MAX_DURATION, model.obs_shape), dtype=np.float32)
+        actions = np.zeros(MAX_DURATION, dtype=np.float32)
+        values = np.zeros(MAX_DURATION, dtype=np.float32)
+        neglogps = np.zeros(MAX_DURATION, dtype=np.float32)
+        rewards = np.zeros(MAX_DURATION, dtype=np.float32)
+        values_next = np.zeros(MAX_DURATION, dtype=np.float32)
+
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
 
             obs = env.reset()
+
             success_num = 0
             for episode in range(TRAIN_EPISODES):
                 for j in count():
-                    # env.render()
+                    # if episode > 500:
+                    #     env.render()
 
                     states[j] = obs
+
                     actions[j], values[j], neglogps[j] = model.evaluate_model(sess,
                                                                               obs.reshape(1, -1),
                                                                               keep_prob=1.0)
-                    next_obs, rewards[j], done, info = env.step(int(actions[j]))
+                    try:
+                        next_obs, rewards[j], done, info = env.step(actions[j])
+                    except AssertionError:
+                        actions = actions.astype(np.int)
+                        next_obs, rewards[j], done, info = env.step(actions[j])
 
+                    # print(actions[j], values[j], neglogps[j])
                     if done:
                         obs = env.reset()
-                        rewards[j] = -1
+                        # rewards[j] = 0
                         break
                     else:
                         obs = next_obs
 
-                if rewards[:j + 1].sum() >= 195:
-                    success_num += 1
-                    if success_num >= 10:
-                        print('Clear!! Model saved.')
-                        break
-                else:
-                    success_num = 0
+                # if rewards[:j + 1].sum() >= 195:
+                #     success_num += 1
+                #     if success_num >= 10:
+                #         print('Clear!! Model saved.')
+                #         break
+                # else:
+                #     success_num = 0
 
                 end = j + 1
                 values_next[:end - 1] = values[1:end]
                 values_next[end - 1] = 0
+
+                mov_av.append(sum(rewards[:end]))
 
                 # Выбираем способ оценки
                 gaes = True
@@ -136,7 +178,7 @@ if __name__ == '__main__':
                 # Тренируем нового агента
                 if BATCH_TRAIN:
                     for epoch in range(TRAIN_EPOCHS):
-                        args = np.random.randint(0, len(states[:end]), batch_size)
+                        args = np.random.randint(0, end-1, batch_size)
                         loss, _ = model.train_agent(sess,
                                                     states[args],
                                                     actions[args],
@@ -159,7 +201,8 @@ if __name__ == '__main__':
 
                 print("==========================================")
                 print("Episode: ", episode)
-                print("Len of Episode", len(states[:end]))
-                print("Loss: ", loss, '\n')
+                print("Len of Episode", end)
+                print("Loss: ", loss)
+                print("MA: ", np.mean(mov_av), '\n')
 
     main()

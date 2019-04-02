@@ -1,12 +1,12 @@
 import tensorflow as tf
-import tensorflow_probability as tfp
+from tensorflow.python.keras.layers import Dense, Dropout
 import numpy as np
 from layers import fc_layer
 from common import save_target_graph, restore_target_graph
 import gym
 
 
-class Categorical_v0:
+class CategoricalOld:
     def __init__(self, logits):
         self.logits = logits
 
@@ -33,39 +33,170 @@ class Categorical_v0:
             labels=tf.one_hot(x, self.logits.shape[-1]))
 
 
-class CategoricalNew:
+def cross_entropy(p, q):
+    return -tf.reduce_sum(p * tf.log(q + 1e-10), axis=-1)
+
+
+# class Categorical:
+#     def __init__(self, logits):
+#         self.logits = logits
+#         self.probs = tf.nn.softmax(logits)
+#
+#     def sample(self):
+#         try:
+#             action = tf.random.categorical(tf.log(self.probs), num_samples=1)
+#         except ValueError:
+#             action = tf.stack([tf.random.categorical(tf.log(self.probs[idx]),
+#                                                      num_samples=1) for idx in range(self.probs.shape[0])], axis=0)
+#
+#         return tf.squeeze(action, axis=-1)
+#
+#     def neglogp(self, x):
+#         if x.dtype not in (tf.uint8, tf.int32, tf.int64):
+#             print('Casting dtype of x to tf.int32')
+#             x = tf.cast(x, tf.int32)
+#
+#         return tf.reduce_sum(cross_entropy(tf.one_hot(x, self.logits.shape[-1]), self.probs), axis=-1)
+#
+#     def entropy(self):
+#         return tf.reduce_mean(cross_entropy(self.probs, self.probs), axis=-1)
+
+class Categorical:
     def __init__(self, logits):
         self.logits = logits
         self.probs = tf.nn.softmax(logits)
 
     def sample(self):
         action = tf.random.categorical(tf.log(self.probs), num_samples=1)
-        return tf.reshape(action, shape=[-1])
-
-    @staticmethod
-    def cross_entropy(p, q):
-        return -tf.reduce_sum(p * tf.log(q + 1e-10), axis=1)
+        return tf.squeeze(action)
 
     def neglogp(self, x):
         if x.dtype not in (tf.uint8, tf.int32, tf.int64):
             print('Casting dtype of x to tf.int32')
             x = tf.cast(x, tf.int32)
 
-        return self.cross_entropy(tf.one_hot(x, self.logits.shape[-1]), self.probs)
+        return cross_entropy(tf.one_hot(x, self.logits.shape[-1]), self.probs)
 
     def entropy(self):
-        return self.cross_entropy(self.probs, self.probs)
+        return cross_entropy(self.probs, self.probs)
+        # return tf.reduce_mean(cross_entropy(self.probs, self.probs), axis=-1)
+
+def mlp_categorical_policy(x, a, hidden_sizes, activation, output_activation, action_space):
+    act_dim = action_space.n
+    logits = mlp(x, list(hidden_sizes)+[act_dim], activation, None)
+    logp_all = tf.nn.log_softmax(logits)
+    pi = tf.squeeze(tf.multinomial(logits, 1), axis=1)
+    logp = tf.reduce_sum(tf.one_hot(a, depth=act_dim) * logp_all, axis=1)
+    logp_pi = tf.reduce_sum(tf.one_hot(pi, depth=act_dim) * logp_all, axis=1)
+    return pi, logp, logp_pi
+
+class Normal:
+    def __init__(self, mean=.0, logstd=1.0):
+        self.mean = mean
+        self.logstd = logstd
+        self.std = tf.exp(logstd)
+
+    def sample(self):
+        return self.mean + self.std * tf.random_normal(tf.shape(self.mean))
+
+    def neglogp(self, x):
+        return 0.5 * tf.reduce_sum(tf.square((x - self.mean) / self.std), axis=-1) \
+               + 0.5 * np.log(2.0 * np.pi) * tf.cast(tf.shape(x)[-1], tf.float32) \
+               + tf.reduce_sum(self.logstd, axis=-1)
+
+    def entropy(self):
+        return tf.reduce_sum(self.logstd + .5 * np.log(2.0 * np.pi * np.e), axis=-1)
+
+
+# class MultiCategorical:
+#     def __init__(self, vec, n):
+#         self.vec = vec
+#         self.n = n
+#
+#         self.distributions = list(map(Categorical, tf.split(vec, n, axis=-1)))
+#
+#     def sample(self):
+#         return tf.cast(tf.stack([p.sample() for p in self.distributions], axis=-1), tf.int32)
+#
+#     def neglogp(self, x):
+#         return tf.add_n([p.neglogp(_x) for p, _x in zip(self.distributions, tf.unstack(x, axis=-1))])
+#
+#     def entropy(self):
+#         return tf.add_n([p.entropy() for p in self.distributions])
+
+# class Multi:
+#     def __init__(self, distributions):
+#         self.distributions = distributions
+#
+#     def sample(self):
+#         # return tf.cast(tf.stack([p.sample() for p in self.distributions], axis=-1), tf.int32)
+#         return tf.stack([p.sample() for p in self.distributions], axis=-1)
+#
+#     def neglogp(self, x):
+#         return tf.add_n([p.neglogp(_x) for p, _x in zip(self.distributions, tf.unstack(x, axis=-1))])
+#
+#     def entropy(self):
+#         return tf.add_n([p.entropy() for p in self.distributions])
+#
+#
+# class MultiCategorical(Multi):
+#     def __init__(self, vec):
+#         self.vec = vec
+#         n = self.vec.shape[0]
+#
+#         categoricals = list(map(Categorical, tf.split(vec, n, axis=0)))
+#         super().__init__(categoricals)
+#
+#     def sample(self):
+#         return tf.cast(super().sample(), tf.int32)
+#
+#
+# class MultiNormal(Multi):
+#     def __init__(self,  means, logstds):
+#         assert means.shape == logstds.shape
+#
+#         self.means = means
+#         self.logstds = logstds
+#         n = self.means.shape[0]
+#
+#         normals = list(map(Normal, *[tf.split(vec, n, axis=-1) for vec in [means, logstds]]))
+#         # normals = [Normal(means[idx], logstds[idx]) for idx in range(n)]
+#         super().__init__(normals)
+#
+
+# with tf.Session() as sess:
+#     means = tf.Variable(np.array([[0., 1., 2.]]), dtype=tf.float32)
+#     logstds = tf.Variable(np.array([-2, -2, -2]), dtype=tf.float32)
+#     var = tf.Variable([2])
+#     print(means.shape)
+#     print(var.shape)
+#     # result = Normal(mean=means, logstd=logstds)
+#     result = Categorical(means)
+#     # result = MultiCategorical(means)
+#     s, e, n = result.sample(), result.entropy(), result.neglogp(var)
+#     sess.run(tf.global_variables_initializer())
+#     for x in range(10):
+#         print(sess.run(s))
+#         print(sess.run(e))
+#         print(sess.run(n))
 
 
 class Agent:
-    def __init__(self, env, cliprange=0.1, max_grad_norm=None, stochastic=False):
+    # TODO: Remove 'stochastic' from func definition
+    def __init__(self, env, actor_net, critic_net, cliprange=0.1, max_grad_norm=None, stochastic=False):
+        def get_space_shape(space):
+            try:
+                return space.shape[0]
+            except IndexError:
+                return space.n
+
         # Environment parameters
         self.act_space = env.action_space
-        try:
-            self.act_shape = env.action_space.shape[0]
-        except IndexError:
-            self.act_shape = env.action_space.n
-        self.obs_shape = env.observation_space.shape[0]
+        self.act_shape = get_space_shape(self.act_space)
+        self.obs_shape = get_space_shape(env.observation_space)
+
+        self.actor_net = actor_net
+        self.critic_net = critic_net
 
         # Reset the graph
         tf.reset_default_graph()
@@ -86,18 +217,25 @@ class Agent:
         """Build the model"""
         # Agent for acting
         with tf.variable_scope('old_agent') as scope:
-            self.actions_distrs, self.actor_logits = self.actor(self.states, keep_prob=self.keep_prob)
-            self.values, self.critic_feature = self.critic(self.states, keep_prob=self.keep_prob)
+            self.actions_distrs = self.actor(self.states, keep_prob=self.keep_prob)
+            self.values = self.critic(self.states, keep_prob=self.keep_prob)
             policy_vars_old = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope.name)
 
         # Agent for training
         with tf.variable_scope('new_agent') as scope:
-            self.actions_distrs_new, self.actor_logits_new = self.actor(self.states)
-            self.values_new, self.critic_feature_new = self.critic(self.states)
+            self.actions_distrs_new = self.actor(self.states)
+            self.values_new = self.critic(self.states)
             policy_vars_new = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope.name)
 
+        # Sample actions from given distribution
         self.actions = self.actions_distrs.sample()
+        try:
+            self.actions = tf.clip_by_value(tf.squeeze(self.actions, axis=0), self.act_space.low, self.act_space.high)
+        except AttributeError:
+            pass
+
         self.neglogp = self.actions_distrs.neglogp(self.actions)
+        self.neglogp_new = self.actions_distrs_new.neglogp(self.actions_old)
 
         self.synchronize_op = [old_p.assign(p) for old_p, p in zip(policy_vars_old, policy_vars_new)]
 
@@ -111,9 +249,8 @@ class Agent:
             self.critic_loss = 0.5*tf.reduce_mean(tf.maximum(critic_loss, critic_loss_clipped))
 
         with tf.variable_scope('actor_loss'):
-            neglogps_new = self.actions_distrs_new.neglogp(self.actions_old)
 
-            ratio = tf.exp(self.neglogps_old - neglogps_new)
+            ratio = tf.exp(self.neglogps_old - self.neglogp_new)
 
             actor_loss = self.gaes * ratio
             actor_loss_clipped = self.gaes * tf.clip_by_value(ratio, 1.0 - self.cliprange, 1.0 + self.cliprange)
@@ -122,9 +259,11 @@ class Agent:
         with tf.variable_scope('entropy_loss'):
             entropy = self.actions_distrs_new.entropy()
             self.entropy_loss = tf.reduce_mean(entropy, axis=0)
+            # self.entropy_loss = entropy
+
 
         with tf.variable_scope('total_loss'):
-            self.loss = self.critic_loss + self.actor_loss - 0.001*self.entropy_loss
+            self.loss = self.critic_loss + self.actor_loss# - 0.001*self.entropy_loss
 
         # Define all trainable variables
         self.train_vars = policy_vars_new
@@ -140,7 +279,7 @@ class Agent:
 
         trainer = tf.train.AdamOptimizer(self.learning_rate)
 
-        # Backpropagation
+        # Backpropagate
         self.train_op = trainer.apply_gradients(grads)
 
         # Define additional features
@@ -174,9 +313,10 @@ class Agent:
     def get_value(self, sess, samples, keep_prob):
         return sess.run(self.values, {self.states: samples, self.keep_prob: keep_prob})
 
+    # TODO: Use here distr.sample() func instead of tf.multinomial()
     def get_action(self, sess, samples, keep_prob, stochastic=True):
         if stochastic:
-            action = tf.multinomial(tf.log(self.actions_distrs), num_samples=1)
+            action = tf.multinomial(tf.log(self.actions_distrs + 1e-10), num_samples=1)
             action = tf.reshape(self.action, shape=[-1])
         else:
             action = tf.argmax(self.actions_distrs, axis=1)
@@ -198,55 +338,25 @@ class Agent:
                                                                self.keep_prob: keep_prob})
 
     def actor(self, states, name='actor', keep_prob=0.5, reuse=False, trainable=True):
-        dc = None
-        act = 'silu'
-
         with tf.variable_scope(name, reuse=reuse) as scope:
-            out = fc_layer(states, 60, keep_prob, dc=dc, name="layer_0", act=act, trainable=trainable)
-            # out = fc_layer(out, 150, keep_prob, dc=dc, name="layer_1", act=act, trainable=trainable)
-
-            out = fc_layer(out, 20, keep_prob, dc=None, name="layer_2", act=act, trainable=trainable)
+            features = self.actor_net(states, trainable=trainable)
 
             # TODO: Доделать
             if isinstance(self.act_space, gym.spaces.Discrete):
-                logits = fc_layer(out, self.act_shape, keep_prob, dc=None, name="layer_logits", act='none',
-                                  trainable=trainable)
-
-                actions_probability = CategoricalNew(logits)
+                logits = Dense(self.act_shape, None, trainable=trainable, name="layer_logits")(features)
+                distribution = Categorical(logits)
 
             else:
-                mu = logits = 2 * tf.contrib.layers.fully_connected(inputs=out, num_outputs=self.act_shape,
-                                                           activation_fn=tf.nn.tanh,
-                                                           trainable=trainable,
-                                                           scope='mu')
+                mu = Dense(self.act_shape, None, trainable=trainable, name='mu')(features)
+                sigma = Dense(self.act_shape, None, trainable=trainable, name='sigma')(features)
+                distribution = Normal(mean=mu, logstd=sigma)
 
-                # fc_layer(out, self.act_shape, keep_prob, dc=None, name="mu", act='tanh',
-                #          trainable=trainable)
-
-                sigma = tf.contrib.layers.fully_connected(inputs=out, num_outputs=self.act_shape,
-                                                          activation_fn=tf.nn.softplus,
-                                                          trainable=trainable,
-                                                          scope='sigma')
-                actions_probability = tfp.distributions.Normal(loc=mu, scale=sigma)
-                # fc_layer(out, self.act_shape, keep_prob, dc=None, name="sigma", act='none',
-                #          trainable=trainable)
-
-                # self.sample_op = \
-                # tf.clip_by_value(tf.squeeze(pi.sample(1), axis=0), self.action_bound[0], self.action_bound[1])[0]
-
-            return actions_probability, logits
+            return distribution
 
     def critic(self, states, name='critic', keep_prob=0.5, reuse=False, trainable=True):
-        dc = None
-        act = 'silu'
-
         with tf.variable_scope(name, reuse=reuse):
-            out = fc_layer(states, 60, keep_prob, dc=dc, name="layer_0", act=act, trainable=trainable)
-            # out = fc_layer(out, 150, keep_prob, dc=dc, name="layer_1", act=act, trainable=trainable)
+            features = self.critic_net(states, trainable=trainable)
 
-            features = fc_layer(out, 20, keep_prob, dc=None, name="layer_2", act=act, trainable=trainable)
+            value = Dense(1, None, trainable=trainable, name="layer_logits")(features)
 
-            value = fc_layer(features, 1, keep_prob, dc=None, name="layer_logits", act='none',
-                             trainable=trainable)
-
-        return tf.squeeze(value), features
+        return tf.squeeze(value)
