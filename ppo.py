@@ -1,184 +1,10 @@
 import tensorflow as tf
 from tensorflow.python.keras.layers import Dense, Dropout
 import numpy as np
-from layers import fc_layer
-from common import save_target_graph, restore_target_graph
 import gym
 
-
-class CategoricalOld:
-    def __init__(self, logits):
-        self.logits = logits
-
-    def sample(self):
-        u = tf.random_uniform(tf.shape(self.logits))
-
-        return tf.argmax(self.logits - tf.log(-tf.log(u)), axis=-1)
-
-    def entropy(self):
-        a0 = self.logits - tf.reduce_max(self.logits, axis=-1, keepdims=True)
-        ea0 = tf.exp(a0)
-        z0 = tf.reduce_sum(ea0, axis=-1, keepdims=True)
-        p0 = ea0 / z0
-
-        return tf.reduce_sum(p0 * (tf.log(z0) - a0), axis=-1)
-
-    def neglogp(self, x):
-        if x.dtype not in (tf.uint8, tf.int32, tf.int64):
-            print('Casting dtype of x')
-            x = tf.cast(x, tf.int32)
-
-        return tf.nn.softmax_cross_entropy_with_logits_v2(
-            logits=self.logits,
-            labels=tf.one_hot(x, self.logits.shape[-1]))
-
-
-def cross_entropy(p, q):
-    return -tf.reduce_sum(p * tf.log(q + 1e-10), axis=-1)
-
-
-# class Categorical:
-#     def __init__(self, logits):
-#         self.logits = logits
-#         self.probs = tf.nn.softmax(logits)
-#
-#     def sample(self):
-#         try:
-#             action = tf.random.categorical(tf.log(self.probs), num_samples=1)
-#         except ValueError:
-#             action = tf.stack([tf.random.categorical(tf.log(self.probs[idx]),
-#                                                      num_samples=1) for idx in range(self.probs.shape[0])], axis=0)
-#
-#         return tf.squeeze(action, axis=-1)
-#
-#     def neglogp(self, x):
-#         if x.dtype not in (tf.uint8, tf.int32, tf.int64):
-#             print('Casting dtype of x to tf.int32')
-#             x = tf.cast(x, tf.int32)
-#
-#         return tf.reduce_sum(cross_entropy(tf.one_hot(x, self.logits.shape[-1]), self.probs), axis=-1)
-#
-#     def entropy(self):
-#         return tf.reduce_mean(cross_entropy(self.probs, self.probs), axis=-1)
-
-class Categorical:
-    def __init__(self, logits):
-        self.logits = logits
-        self.probs = tf.nn.softmax(logits)
-
-    def sample(self):
-        action = tf.random.categorical(tf.log(self.probs), num_samples=1)
-        return tf.squeeze(action)
-
-    def neglogp(self, x):
-        if x.dtype not in (tf.uint8, tf.int32, tf.int64):
-            print('Casting dtype of x to tf.int32')
-            x = tf.cast(x, tf.int32)
-
-        return cross_entropy(tf.one_hot(x, self.logits.shape[-1]), self.probs)
-
-    def entropy(self):
-        return cross_entropy(self.probs, self.probs)
-        # return tf.reduce_mean(cross_entropy(self.probs, self.probs), axis=-1)
-
-def mlp_categorical_policy(x, a, hidden_sizes, activation, output_activation, action_space):
-    act_dim = action_space.n
-    logits = mlp(x, list(hidden_sizes)+[act_dim], activation, None)
-    logp_all = tf.nn.log_softmax(logits)
-    pi = tf.squeeze(tf.multinomial(logits, 1), axis=1)
-    logp = tf.reduce_sum(tf.one_hot(a, depth=act_dim) * logp_all, axis=1)
-    logp_pi = tf.reduce_sum(tf.one_hot(pi, depth=act_dim) * logp_all, axis=1)
-    return pi, logp, logp_pi
-
-class Normal:
-    def __init__(self, mean=.0, logstd=1.0):
-        self.mean = mean
-        self.logstd = logstd
-        self.std = tf.exp(logstd)
-
-    def sample(self):
-        return self.mean + self.std * tf.random_normal(tf.shape(self.mean))
-
-    def neglogp(self, x):
-        return 0.5 * tf.reduce_sum(tf.square((x - self.mean) / self.std), axis=-1) \
-               + 0.5 * np.log(2.0 * np.pi) * tf.cast(tf.shape(x)[-1], tf.float32) \
-               + tf.reduce_sum(self.logstd, axis=-1)
-
-    def entropy(self):
-        return tf.reduce_sum(self.logstd + .5 * np.log(2.0 * np.pi * np.e), axis=-1)
-
-
-# class MultiCategorical:
-#     def __init__(self, vec, n):
-#         self.vec = vec
-#         self.n = n
-#
-#         self.distributions = list(map(Categorical, tf.split(vec, n, axis=-1)))
-#
-#     def sample(self):
-#         return tf.cast(tf.stack([p.sample() for p in self.distributions], axis=-1), tf.int32)
-#
-#     def neglogp(self, x):
-#         return tf.add_n([p.neglogp(_x) for p, _x in zip(self.distributions, tf.unstack(x, axis=-1))])
-#
-#     def entropy(self):
-#         return tf.add_n([p.entropy() for p in self.distributions])
-
-# class Multi:
-#     def __init__(self, distributions):
-#         self.distributions = distributions
-#
-#     def sample(self):
-#         # return tf.cast(tf.stack([p.sample() for p in self.distributions], axis=-1), tf.int32)
-#         return tf.stack([p.sample() for p in self.distributions], axis=-1)
-#
-#     def neglogp(self, x):
-#         return tf.add_n([p.neglogp(_x) for p, _x in zip(self.distributions, tf.unstack(x, axis=-1))])
-#
-#     def entropy(self):
-#         return tf.add_n([p.entropy() for p in self.distributions])
-#
-#
-# class MultiCategorical(Multi):
-#     def __init__(self, vec):
-#         self.vec = vec
-#         n = self.vec.shape[0]
-#
-#         categoricals = list(map(Categorical, tf.split(vec, n, axis=0)))
-#         super().__init__(categoricals)
-#
-#     def sample(self):
-#         return tf.cast(super().sample(), tf.int32)
-#
-#
-# class MultiNormal(Multi):
-#     def __init__(self,  means, logstds):
-#         assert means.shape == logstds.shape
-#
-#         self.means = means
-#         self.logstds = logstds
-#         n = self.means.shape[0]
-#
-#         normals = list(map(Normal, *[tf.split(vec, n, axis=-1) for vec in [means, logstds]]))
-#         # normals = [Normal(means[idx], logstds[idx]) for idx in range(n)]
-#         super().__init__(normals)
-#
-
-# with tf.Session() as sess:
-#     means = tf.Variable(np.array([[0., 1., 2.]]), dtype=tf.float32)
-#     logstds = tf.Variable(np.array([-2, -2, -2]), dtype=tf.float32)
-#     var = tf.Variable([2])
-#     print(means.shape)
-#     print(var.shape)
-#     # result = Normal(mean=means, logstd=logstds)
-#     result = Categorical(means)
-#     # result = MultiCategorical(means)
-#     s, e, n = result.sample(), result.entropy(), result.neglogp(var)
-#     sess.run(tf.global_variables_initializer())
-#     for x in range(10):
-#         print(sess.run(s))
-#         print(sess.run(e))
-#         print(sess.run(n))
+from common import save_target_graph, restore_target_graph
+from distributions import Categorical, Normal
 
 
 class Agent:
@@ -211,14 +37,14 @@ class Agent:
         self.q_values = tf.placeholder(tf.float32, shape=[None], name='estimation')
 
         self.cliprange = cliprange
-        self.keep_prob = tf.Variable(1.0, dtype=tf.float32)
+        self.drop_rate = tf.Variable(1.0, dtype=tf.float32)
         self.learning_rate = tf.placeholder(tf.float32, shape=[], name='learning_rate')
 
         """Build the model"""
         # Agent for acting
         with tf.variable_scope('old_agent') as scope:
-            self.actions_distrs = self.actor(self.states, keep_prob=self.keep_prob)
-            self.values = self.critic(self.states, keep_prob=self.keep_prob)
+            self.actions_distrs = self.actor(self.states)
+            self.values = self.critic(self.states)
             policy_vars_old = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope.name)
 
         # Agent for training
@@ -308,10 +134,10 @@ class Agent:
             save_target_graph(sess, folder)
 
     def get_actions_distribution(self, sess, samples, keep_prob):
-        return sess.run(self.actions_distrs, {self.states: samples, self.keep_prob: keep_prob})
+        return sess.run(self.actions_distrs, {self.states: samples, self.drop_rate: keep_prob})
 
     def get_value(self, sess, samples, keep_prob):
-        return sess.run(self.values, {self.states: samples, self.keep_prob: keep_prob})
+        return sess.run(self.values, {self.states: samples, self.drop_rate: keep_prob})
 
     # TODO: Use here distr.sample() func instead of tf.multinomial()
     def get_action(self, sess, samples, keep_prob, stochastic=True):
@@ -322,7 +148,7 @@ class Agent:
             action = tf.argmax(self.actions_distrs, axis=1)
 
     def evaluate_model(self, sess, samples, keep_prob):
-        return sess.run([self.actions, self.values, self.neglogp], feed_dict={self.states: samples, self.keep_prob: keep_prob})
+        return sess.run([self.actions, self.values, self.neglogp], feed_dict={self.states: samples, self.drop_rate: keep_prob})
 
     def synchronize_policies(self, sess):
         sess.run(self.synchronize_op)
@@ -335,9 +161,9 @@ class Agent:
                                                                self.gaes: gaes,
                                                                self.q_values: q_values,
                                                                self.learning_rate: learning_rate,
-                                                               self.keep_prob: keep_prob})
+                                                               self.drop_rate: keep_prob})
 
-    def actor(self, states, name='actor', keep_prob=0.5, reuse=False, trainable=True):
+    def actor(self, states, name='actor', reuse=False, trainable=True):
         with tf.variable_scope(name, reuse=reuse) as scope:
             features = self.actor_net(states, trainable=trainable)
 
@@ -353,7 +179,7 @@ class Agent:
 
             return distribution
 
-    def critic(self, states, name='critic', keep_prob=0.5, reuse=False, trainable=True):
+    def critic(self, states, name='critic', reuse=False, trainable=True):
         with tf.variable_scope(name, reuse=reuse):
             features = self.critic_net(states, trainable=trainable)
 
