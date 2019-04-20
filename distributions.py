@@ -2,29 +2,35 @@ import tensorflow as tf
 import numpy as np
 
 
-def cross_entropy(p, q):
-    return -tf.reduce_sum(p * tf.log(q + 1e-10), axis=-1)
-
-
 class Categorical:
+
     def __init__(self, logits):
         self.logits = logits
         self.probs = tf.nn.softmax(logits)
 
-    def sample(self):
-        action = tf.random.categorical(tf.log(self.probs), num_samples=1)
-        return tf.squeeze(action)
+    def sample(self, stochastic=True):
+        if stochastic:
+            action = tf.random.categorical(tf.log(self.probs), num_samples=1)
+        else:
+            action = tf.argmax(self.probs, axis=1)
+
+        return tf.squeeze(action, axis=-1)
 
     def neglogp(self, x):
         if x.dtype not in (tf.uint8, tf.int32, tf.int64):
             print('Casting dtype of x to tf.int32')
             x = tf.cast(x, tf.int32)
 
-        return cross_entropy(tf.one_hot(x, self.logits.shape[-1]), self.probs)
+        return self.cross_entropy(tf.one_hot(x, self.logits.shape[-1]), self.probs)
+        # return -tf.reduce_sum(tf.one_hot(x, depth=2) * self.probs, axis=1)
 
     def entropy(self):
-        return cross_entropy(self.probs, self.probs)
+        return self.cross_entropy(self.probs, self.probs)
         # return tf.reduce_mean(cross_entropy(self.probs, self.probs), axis=-1)
+
+    @staticmethod
+    def cross_entropy(p, q):
+        return -tf.reduce_sum(p * tf.log(q + 1e-10), axis=-1)
 
 
 class Normal:
