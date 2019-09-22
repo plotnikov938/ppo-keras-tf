@@ -139,7 +139,7 @@ class Agent:
         return sess.run(self.values, {self.states: states, self.drop_rate: drop_rate})
 
     # TODO: Add deterministic policy
-    def get_action(self, sess, states, drop_rate=0, stochastic=False):
+    def get_action(self, sess, states, drop_rate=0.0, stochastic=False):
         # # Sample actions from the given distribution
         # self.action = self.actions_distrs.sample(stochastic)
         #
@@ -184,7 +184,7 @@ class Agent:
 
     def actor(self, states, name='actor', reuse=False, trainable=True):
         with tf.variable_scope(name, reuse=reuse):
-            features = self.actor_net(states, trainable=trainable)
+            features = self.actor_net(states, self.drop_rate, trainable=trainable)
 
             if isinstance(self.act_space, gym.spaces.Discrete):
                 logits = Dense(self.act_space.n, None, trainable=trainable, name="layer_logits")(features)
@@ -201,7 +201,7 @@ class Agent:
 
     def critic(self, states, name='critic', reuse=False, trainable=True):
         with tf.variable_scope(name, reuse=reuse):
-            features = self.critic_net(states, trainable=trainable)
+            features = self.critic_net(states, self.drop_rate, trainable=trainable)
 
             value = Dense(1, None, trainable=trainable, name="layer_logits")(features)
 
