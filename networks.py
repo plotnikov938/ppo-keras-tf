@@ -6,7 +6,7 @@ act = 'tanh'
 
 def actor(input_state, drop_rate=0.0, trainable=True):
     out = Dense(64, act, trainable=trainable)(input_state)
-    out = Dropout(rate=drop_rate)(out)
+    out = Dropout(rate=drop_rate)(out, training=True)
     features = Dense(64, act, trainable=trainable)(out)
 
     return features
@@ -14,7 +14,7 @@ def actor(input_state, drop_rate=0.0, trainable=True):
 
 def critic(input_state, drop_rate=0.0, trainable=True):
     out = Dense(64, act, trainable=trainable)(input_state)
-    out = Dropout(rate=drop_rate)(out)
+    out = Dropout(rate=drop_rate)(out, training=True)
     features = Dense(64, act, trainable=trainable)(out)
 
     return features
