@@ -1,9 +1,19 @@
+from array import array
+
 import numpy as np
 import tensorflow as tf
 
 
 def make_gif():
     pass
+
+
+def str2np(string):
+    return np.array([*map(ord, string)], dtype=float)
+
+
+def np2str(arr):
+    return str(array('B', arr.astype(int)).tostring(), 'utf-8')
 
 
 def save_target_graph(sess, folder=None, filename=None, target_name=None):
