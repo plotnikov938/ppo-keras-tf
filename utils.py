@@ -1,11 +1,8 @@
 from array import array
+import os
 
 import numpy as np
 import tensorflow as tf
-
-
-def make_gif():
-    pass
 
 
 def str2np(string):
