@@ -1,3 +1,5 @@
+import sys
+import argparse
 import os
 import time
 from collections import deque
@@ -65,26 +67,24 @@ def play():
 
 
 if __name__ == '__main__':
-    import argparse
-
-    # TODO: DONE add helps
     parser = argparse.ArgumentParser()
     parser.add_argument('--env', type=str, default='Pendulum-v0', help='environment to use')
-    parser.add_argument('--dir', '-d', type=str, required=False,
+    parser.add_argument('--dir', '-d', type=str, default='.',
                         help="directory for saving/loading agent weights")
     parser.add_argument('--render', '-r', action='store_true')
-    parser.add_argument('--save_gif', '-g', default=10, help='generate and save a gif for each N frames')
+    parser.add_argument('--save-gif', type=int, nargs='?', const=8, default=None, help='generate and save a gif for each N frames')
     parser.add_argument('--last', '-l', action='store_true', help='restore the model from the last writen file')
-    parser.add_argument('--episodes', type=int, default=4, help='episodes to play')
+    parser.add_argument('--episodes', '-e', type=int, default=5, help='episodes to play')
     parser.add_argument('--mov_av_size', type=int, default=100, help='the window size for the moving average')
     parser.add_argument('--seed', '-s', type=int, default=0, help='seed for reproducibility')
 
-    if True:
-        args = parser.parse_args('--env Pendulum-v0 --dir PPO_exp -r -l'.split())
-    else:
-        args = parser.parse_args('--env CartPole-v0 --dir PPO_exp -r -l'.split())
+    # Use this in case of some errors occur
+    if len(sys.argv) == 2:
+        if sys.argv[-1] in ['-h', '--help']:
+            parser.print_help(sys.stderr)
+            sys.exit(1)
 
-    args = parser.parse_args('--env LunarLander-v2 --dir PPO_exp -r -l -g'.split())
+    args = parser.parse_args()
 
     EPISODES = args.episodes
     try:

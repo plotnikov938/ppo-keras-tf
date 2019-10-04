@@ -1,3 +1,5 @@
+import sys
+import argparse
 from itertools import count
 from collections import deque
 import time
@@ -80,7 +82,6 @@ def train():
                 for _ in range(CRITIC_TRAIN_EPOCHS):
                     critic_loss, _ = model.train_critic(sess, *inputs, args.critic_lr, args.drop_rate)
 
-            # TODO: Добавить как константу в argsparse
             if not epoch % args.save_epoch and epoch:
                 model.save_weights(sess, PATH, epoch)
 
@@ -91,67 +92,59 @@ def train():
             print("MA_ep_rew: ", np.mean(ma_ep_rew))
             print('Time:', time.time() - start_time, '\n')
 
-            # # TODO: Criterion
-            # if np.mean(ma_ep_rew) >= 200:
-            #     model.save_weights(sess, PATH, epoch)
-            #     break
+            if not args.criterion and np.mean(ma_ep_rew) >= args.criterion:
+                model.save_weights(sess, PATH, epoch)
+                break
 
 
 if __name__ == '__main__':
-    import argparse
-
     parser = argparse.ArgumentParser()
     parser.add_argument('--env', type=str, default='Pendulum-v0')
     parser.add_argument('--dir', type=str, required=True, help='directory for saving/loading agent weights')
     parser.add_argument('--restore', '-r', action='store_true')
     parser.add_argument('--last', '-l', action='store_true',
                         help='restore the model from the last writen file if `--restore` is True')
-    parser.add_argument('--max_to_keep', type=int, default=10,
+    parser.add_argument('--max-to-keep', type=int, default=10,
                         help='the maximum number of recent saves to keep. Older files will be deleted')
     parser.add_argument('--render', action='store_true')
-    parser.add_argument('--mov_av_size', type=int, default=100,
+    parser.add_argument('--mov-av-size', type=int, default=100,
                         help='the window size for the moving average')
+    parser.add_argument('--criterion', '-c', type=int, default=0,
+                        help='defines average reward over `mov-av-size` consecutive '
+                             'trials that must be achieved to solve the problem')
     parser.add_argument('--gamma', type=float, default=0.99,
                         help='discount rate for future rewards')
     parser.add_argument('--lam', type=float, default=0.99,
                         help='discount rate for gaes')
     parser.add_argument('--cliprange', type=float, default=0.1)
-    parser.add_argument('--max_grad_norm', type=float, default=None)
-    parser.add_argument('--drop_rate', type=float, default=0.5)
-    parser.add_argument('--seed', '-s', type=int, default=0, help='seed for reproducability')
+    parser.add_argument('--max-grad-norm', type=float, default=None)
+    parser.add_argument('--drop-rate', type=float, default=0.0)
+    parser.add_argument('--seed', '-s', type=int, default=None, help='seed for reproducibility')
     parser.add_argument('--epochs', type=int, default=100)
-    parser.add_argument("--save_epoch", type=float, default=200, help="save weights every N epochs")
-    parser.add_argument('--trans_per_epoch', type=int, default=200,
+    parser.add_argument("--save-epoch", type=float, default=20, help="save weights every N epochs")
+    parser.add_argument('--trans-per-epoch', type=int, default=200,
                         help='number of transitions per episode')
-    parser.add_argument('--episode_training', action='store_true',
+    parser.add_argument('--episode-training', action='store_true',
                         help='train the agent after the end of each episode')
-    parser.add_argument('--batch_training', action='store_true',
+    parser.add_argument('--batch-training', action='store_true',
                         help='randomly sample batches from the experience buffer and train the agent on them')
-    parser.add_argument('--batch_size', type=int, default=64)
-    parser.add_argument('--actor_train_epochs', type=int, default=10)
-    parser.add_argument('--critic_train_epochs', type=int, default=10)
-    parser.add_argument('--ent_coef', type=float, default=0.001)
-    parser.add_argument('--actor_lr', type=float, default=0.001)
-    parser.add_argument('--critic_lr', type=float, default=0.001)
+    parser.add_argument('--batch-size', type=int, default=64)
+    parser.add_argument('--actor-train-epochs', type=int, default=10)
+    parser.add_argument('--critic-train-epochs', type=int, default=10)
+    parser.add_argument('--ent-coef', type=float, default=0.001)
+    parser.add_argument('--actor-lr', type=float, default=0.001)
+    parser.add_argument('--critic-lr', type=float, default=0.001)
 
-    # 'LunarLanderContinuous-v2'
-    if True:
-        args = parser.parse_args('--env LunarLander-v2 --epochs 400 --gamma 0.999 --lam 0.999 --cliprange 0.1 '
-                                 '--trans_per_epoch 4000 --critic_lr 0.0024 --actor_lr 0.002 --seed 50 '
-                                 '--actor_train_epochs 80 --critic_train_epochs 80 --dir PPO_exp -l'.split())
+    # Use this in case of some errors occur
+    if len(sys.argv) == 2:
+        if sys.argv[-1] in ['-h', '--help']:
+            parser.print_help(sys.stderr)
+            sys.exit(1)
 
-    elif False:
-        args = parser.parse_args('--env Pendulum-v0  --batch_training --epochs 400 --gamma 0.96 --lam 0.999 --cliprange 0.2 '
-                                 '--trans_per_epoch 12000 --critic_lr 0.018 --actor_lr 0.0006 --seed 50 '
-                                 '--actor_train_epochs 80 --critic_train_epochs 80 --dir PPO_exp -l'.split())
-
-    else:
-        args = parser.parse_args('--env CartPole-v0 --mov_av_size 10 --epochs 4000 --gamma 0.98 --lam 0.99 '
-                                 '--cliprange 0.1 --trans_per_epoch 400 --critic_lr 0.001 --actor_lr 0.001 --seed 50 '
-                                 '--actor_train_epochs 2 --critic_train_epochs 2 --dir PPO_exp'.split())
+    args = parser.parse_args()
 
     if args.episode_training and args.batch_training:
-        parser.error('either batch_training or episode_training can be selected')
+        parser.error('either batch-training or episode-training can be selected')
 
     TRANSITIONS_PER_EPOCH = args.trans_per_epoch
     EPOCHS = args.epochs
@@ -177,5 +170,5 @@ if __name__ == '__main__':
 
     buf = ExpBuffer(model.obs_shape[-1], model.act_shape[-1], TRANSITIONS_PER_EPOCH, args.gamma, args.lam)
 
-    # Run the training process
+    # Run training process
     train()
