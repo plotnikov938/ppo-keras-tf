@@ -9,8 +9,8 @@ The implementation is tested on [Pendulum-v0](https://github.com/openai/gym/wiki
 
 ---
 This project is the part of a datascience portfolio. Other projects can be found here:
-* [Implementation of progressive groving of GANs with Keras + tensorflow](link1)
-* [Text classification using CapsNet and multihead relative attention with Keras + tensorflow](link2)
+* [Implementation of progressive groving of GANs with Keras + tensorflow](https://github.com/plotnikov938/pg_gans_keras_tf)
+* [Text classification using CapsNet and multihead relative attention with Keras + tensorflow](https://github.com/plotnikov938/txt_class_keras_tf)
 ---
 
 ## Table of Contents
@@ -29,7 +29,7 @@ Make sure you use Python 3.
 
 Clone this repo to your local machine:
 ```
-$ git clone https://github.com/myrepo/ppo_keras_tf
+$ git clone https://github.com/plotnikov938/ppo_keras_tf
 ```
 Go into the project directory:
 ```
@@ -89,7 +89,7 @@ document.getElementById('code2').innerHTML=pre_string + this.value.slice(0, -4) 
     <img id="preview" src="PPO_exp/results/" width="640" name="gif" />
 </p>
 
-##Resources
+## Resources
 1. [Proximal Policy Optimization Algorithms](https://arxiv.org/abs/1707.06347)
 2. [OpenAI gym](https://gym.openai.com)
 
