@@ -8,7 +8,7 @@ For training purposes, Proximal Policy Optimization (PPO) algorithm is used impl
 The implementation is tested on [Pendulum-v0](https://github.com/openai/gym/wiki/Pendulum-v0), [CartPole-v0](https://github.com/openai/gym/wiki/CartPole-v0) and [LunarLander-v2](https://github.com/openai/gym/wiki/Leaderboard#lunarlander-v2) tasks. 
 
 ---
-This project is the part of a datascience portfolio. Other projects can be found here:
+This project is the part of the datascience portfolio. Other projects can be found here:
 * [Implementation of progressive groving of GANs with Keras + tensorflow](https://github.com/plotnikov938/pg_gans_keras_tf)
 * [Text classification using CapsNet and multihead relative attention with Keras + tensorflow](https://github.com/plotnikov938/txt_class_keras_tf)
 ---
@@ -29,7 +29,7 @@ Make sure you use Python 3.
 
 Clone this repo to your local machine:
 ```
-$ git clone https://github.com/plotnikov938/ppo_keras_tf
+$ git clone https://github.com/plotnikov938/ppo_keras_tf.git
 ```
 Go into the project directory:
 ```
@@ -71,22 +71,22 @@ Some hyper-parameters can be modified with different arguments to train.py and r
 
 ## Results
 
-<label for="gif-select">Choose an environment:</label>
-
-<select id="stage-select" onchange="var link='PPO_exp/results/'; 
-var pre_string = '$ python3 run.py --env '; 
-var post_string = ' --dir PPO_exp --save-gif -r -l'; 
-document.getElementById('preview').src=link + this.value;  
-document.getElementById('code2').innerHTML=pre_string + this.value.slice(0, -4) + post_string;">
-    <option selected value="Pendulum-v0.gif">Pendulum-v0</option>
-    <option value="CartPole-v0.gif">CartPole-v0</option>
-    <option value="LunarLander-v2.gif">LunarLander-v2</option>
-</select>
-
 <pre><code id="code2">$ python3 run.py --env Pendulum-v0 --dir PPO_exp --save-gif -r -l</code></pre>
 
 <p align="center">
-    <img id="preview" src="PPO_exp/results/" width="640" name="gif" />
+    <img id="preview" src="PPO_exp/results/Pendulum-v0.gif" width="640" name="gif" />
+</p>
+
+<pre><code id="code2">$ python3 run.py --env CartPole-v0 --dir PPO_exp --save-gif -r -l</code></pre>
+
+<p align="center">
+    <img id="preview" src="PPO_exp/results/CartPole-v0.gif" width="640" name="gif" />
+</p>
+
+<pre><code id="code2">$ python3 run.py --env LunarLander-v2 --dir PPO_exp --save-gif -r -l</code></pre>
+
+<p align="center">
+    <img id="preview" src="PPO_exp/results/LunarLander-v2.gif" width="640" name="gif" />
 </p>
 
 ## Resources
