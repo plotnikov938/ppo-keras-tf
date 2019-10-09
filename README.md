@@ -71,23 +71,38 @@ Some hyper-parameters can be modified with different arguments to train.py and r
 
 ## Results
 
-<pre><code id="code2">$ python3 run.py --env Pendulum-v0 --dir PPO_exp --save-gif -r -l</code></pre>
+<details open>
+  <summary>LunarLander-v2</summary>
+ 
+  <pre><code id="code2">$ python3 run.py --env LunarLander-v2 --dir PPO_exp --save-gif -r -l</code></pre>
 
-<p align="center">
-    <img id="preview" src="PPO_exp/results/Pendulum-v0.gif" width="640" name="gif" />
-</p>
+  <p align="center">
+      <img id="preview" src="PPO_exp/results/LunarLander-v2.gif" width="640" name="gif" />
+  </p>
 
-<pre><code id="code2">$ python3 run.py --env CartPole-v0 --dir PPO_exp --save-gif -r -l</code></pre>
+</details>
 
-<p align="center">
-    <img id="preview" src="PPO_exp/results/CartPole-v0.gif" width="640" name="gif" />
-</p>
+<details>
+  <summary>Pendulum-v0</summary>
+ 
+  <pre><code id="code2">$ python3 run.py --env Pendulum-v0 --dir PPO_exp --save-gif -r -l</code></pre>
 
-<pre><code id="code2">$ python3 run.py --env LunarLander-v2 --dir PPO_exp --save-gif -r -l</code></pre>
+  <p align="center">
+      <img id="preview" src="PPO_exp/results/Pendulum-v0.gif" width="640" name="gif" />
+  </p>
 
-<p align="center">
-    <img id="preview" src="PPO_exp/results/LunarLander-v2.gif" width="640" name="gif" />
-</p>
+</details>
+
+<details>
+  <summary>CartPole-v0</summary>
+ 
+  <pre><code id="code2">$ python3 run.py --env CartPole-v0 --dir PPO_exp --save-gif -r -l</code></pre>
+ 
+  <p align="center">
+      <img id="preview" src="PPO_exp/results/CartPole-v0.gif" width="640" name="gif" />
+  </p>
+
+</details>
 
 ## Resources
 1. [Proximal Policy Optimization Algorithms](https://arxiv.org/abs/1707.06347)
