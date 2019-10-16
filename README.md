@@ -8,7 +8,7 @@ The implementation is tested on [Pendulum-v0](https://github.com/openai/gym/wiki
 
 ---
 This project is the part of the datascience portfolio. Other projects can be found here:
-* [Implementation of progressive groving of GANs with Keras + tensorflow](https://github.com/plotnikov938/pg-gans-keras-tf)
+* [Implementation of progressive growing of GANs with Keras + tensorflow](https://github.com/plotnikov938/pg-gans-keras-tf)
 * [Text classification using CapsNet and multihead relative attention with Keras + tensorflow](https://github.com/plotnikov938/txt-class-keras-tf)
 ---
 
