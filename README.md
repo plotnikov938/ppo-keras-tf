@@ -2,15 +2,14 @@
 
 This repository contains the code for reinforcement learning that allows to train and run an agent 
 for various discrete and continuous control space tasks 
-in [OpenAI gym](https://github.com/openai/gym). 
-For training purposes, Proximal Policy Optimization (PPO) algorithm is used implemented with Keras and tensorflow. 
+in [OpenAI gym](https://github.com/openai/gym). The Proximal Policy Optimization (PPO) algorithm implemented with Keras and tensorflow to train a policy to control an agent. 
 
 The implementation is tested on [Pendulum-v0](https://github.com/openai/gym/wiki/Pendulum-v0), [CartPole-v0](https://github.com/openai/gym/wiki/CartPole-v0) and [LunarLander-v2](https://github.com/openai/gym/wiki/Leaderboard#lunarlander-v2) tasks. 
 
 ---
 This project is the part of the datascience portfolio. Other projects can be found here:
-* [Implementation of progressive groving of GANs with Keras + tensorflow](https://github.com/plotnikov938/pg_gans_keras_tf)
-* [Text classification using CapsNet and multihead relative attention with Keras + tensorflow](https://github.com/plotnikov938/txt_class_keras_tf)
+* [Implementation of progressive groving of GANs with Keras + tensorflow](https://github.com/plotnikov938/pg-gans-keras-tf)
+* [Text classification using CapsNet and multihead relative attention with Keras + tensorflow](https://github.com/plotnikov938/txt-class-keras-tf)
 ---
 
 ## Table of Contents
@@ -29,11 +28,11 @@ Make sure you use Python 3.
 
 Clone this repo to your local machine:
 ```
-$ git clone https://github.com/plotnikov938/ppo_keras_tf.git
+$ git clone https://github.com/plotnikov938/ppo-keras-tf.git
 ```
 Go into the project directory:
 ```
-$ cd ppo_keras_tf/
+$ cd ppo-keras-tf/
 ```
 Create a virtual environment if needed:
 ```
@@ -109,4 +108,4 @@ Some hyper-parameters can be modified with different arguments to train.py and r
 2. [OpenAI gym](https://gym.openai.com)
 
 ## Contacts
-Please contact me if you have any questions:  [plotnikov.ilia938@gmail.com](mailto:plotnikov.ilia938@gmail.com)
+Please feel free to contact me if you have any questions:  [plotnikov.ilia938@gmail.com](mailto:plotnikov.ilia938@gmail.com)
