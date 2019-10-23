@@ -13,15 +13,12 @@ This project is the part of the datascience portfolio. Other projects can be fou
 ---
 
 ## Table of Contents
-  * [Features](#features)
   * [Requirements](#requirements)
   * [Installation](#installation)
   * [Usage](#usage)
   * [Results](#results)
   * [Resources](#resources) 
   * [Contacts](#contacts)   
-  
-## Features
 
 ## Installation
 Make sure you use Python 3.
